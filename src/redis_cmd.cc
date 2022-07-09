@@ -45,6 +45,7 @@
 #include "redis_pubsub.h"
 #include "redis_sortedint.h"
 #include "redis_slot.h"
+#include "redis_TS.h"
 #include "replication.h"
 #include "util.h"
 #include "storage.h"
@@ -4729,6 +4730,36 @@ class CommandScript : public Commander {
   std::string subcommand_;
 };
 
+class CommandTSMSet : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // TSADD primary_key timestamp class_id value ttl [class_id value ttl]
+    if (args.size() % 3 != 0) {
+      return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    Redis::TS ts_db(svr->storage_, conn->GetNamespace());
+    std::vector<TSPairs> tss;
+    std::string &primary_key = args_[1];
+    std::string &timestamp = args_[2];
+    // TODO timestamp optimize
+    for (size_t i = 3; i < args_.size(); i += 3) {
+      std::string &clustering_id = args_[i];
+      tss.emplace_back(TSPairs{primary_key + clustering_id + timestamp,
+                               args_[i + 1], std::stoi(args_[i + 2])});
+      // tss.emplace_back(TSPairs{args_[i], args_[i + 1]});
+    }
+    rocksdb::Status s = ts_db.MAdd(primary_key, tss);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
 #define ADD_CMD(name, arity, description , first_key, last_key, key_step, fn) \
 {name, arity, description, 0, first_key, last_key, key_step, []() -> std::unique_ptr<Commander> { \
   return std::unique_ptr<Commander>(new fn()); \
@@ -4866,7 +4897,8 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("zremrangebyrank", 4, "write", 1, 1, 1, CommandZRemRangeByRank),
     ADD_CMD("zremrangebyscore", -4, "write", 1, 1, 1, CommandZRemRangeByScore),
     ADD_CMD("zremrangebylex", 4, "write", 1, 1, 1, CommandZRemRangeByLex),
-    ADD_CMD("zrevrangebyscore", -4, "read-only", 1, 1, 1, CommandZRevRangeByScore),
+    ADD_CMD("zrevrangebyscore", -4, "read-only", 1, 1, 1,
+            CommandZRevRangeByScore),
     ADD_CMD("zrevrank", 3, "read-only", 1, 1, 1, CommandZRevRank),
     ADD_CMD("zscore", 3, "read-only", 1, 1, 1, CommandZScore),
     ADD_CMD("zmscore", -3, "read-only", 1, 1, 1, CommandZMScore),
@@ -4878,16 +4910,23 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("geohash", -3, "read-only", 1, 1, 1, CommandGeoHash),
     ADD_CMD("geopos", -3, "read-only", 1, 1, 1, CommandGeoPos),
     ADD_CMD("georadius", -6, "write", 1, 1, 1, CommandGeoRadius),
-    ADD_CMD("georadiusbymember", -5, "write", 1, 1, 1, CommandGeoRadiusByMember),
+    ADD_CMD("georadiusbymember", -5, "write", 1, 1, 1,
+            CommandGeoRadiusByMember),
     ADD_CMD("georadius_ro", -6, "read-only", 1, 1, 1, CommandGeoRadiusReadonly),
-    ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1, CommandGeoRadiusByMemberReadonly),
+    ADD_CMD("georadiusbymember_ro", -5, "read-only", 1, 1, 1,
+            CommandGeoRadiusByMemberReadonly),
 
     ADD_CMD("publish", 3, "read-only pub-sub", 0, 0, 0, CommandPublish),
-    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandSubscribe),
-    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandUnSubscribe),
-    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPSubscribe),
-    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0, CommandPUnSubscribe),
-    ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0, CommandPubSub),
+    ADD_CMD("subscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0,
+            CommandSubscribe),
+    ADD_CMD("unsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0,
+            CommandUnSubscribe),
+    ADD_CMD("psubscribe", -2, "read-only pub-sub no-multi no-script", 0, 0, 0,
+            CommandPSubscribe),
+    ADD_CMD("punsubscribe", -1, "read-only pub-sub no-multi no-script", 0, 0, 0,
+            CommandPUnSubscribe),
+    ADD_CMD("pubsub", -2, "read-only pub-sub no-script", 0, 0, 0,
+            CommandPubSub),
 
     ADD_CMD("multi", 1, "multi", 0, 0, 0, CommandMulti),
     ADD_CMD("discard", 1, "multi", 0, 0, 0, CommandDiscard),
@@ -4899,27 +4938,40 @@ CommandAttributes redisCommandTable[] = {
     ADD_CMD("siexists", -3, "read-only", 1, 1, 1, CommandSortedintExists),
     ADD_CMD("sirange", -4, "read-only", 1, 1, 1, CommandSortedintRange),
     ADD_CMD("sirevrange", -4, "read-only", 1, 1, 1, CommandSortedintRevRange),
-    ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRangeByValue),
-    ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1, CommandSortedintRevRangeByValue),
+    ADD_CMD("sirangebyvalue", -4, "read-only", 1, 1, 1,
+            CommandSortedintRangeByValue),
+    ADD_CMD("sirevrangebyvalue", -4, "read-only", 1, 1, 1,
+            CommandSortedintRevRangeByValue),
 
     ADD_CMD("cluster", -2, "cluster no-script", 0, 0, 0, CommandCluster),
     ADD_CMD("clusterx", -2, "cluster no-script", 0, 0, 0, CommandClusterX),
 
     ADD_CMD("eval", -3, "exclusive write no-script", 0, 0, 0, CommandEval),
-    ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0, CommandEvalSHA),
+    ADD_CMD("evalsha", -3, "exclusive write no-script", 0, 0, 0,
+            CommandEvalSHA),
     ADD_CMD("script", -2, "exclusive no-script", 0, 0, 0, CommandScript),
 
     ADD_CMD("compact", 1, "read-only no-script", 0, 0, 0, CommandCompact),
     ADD_CMD("bgsave", 1, "read-only no-script", 0, 0, 0, CommandBGSave),
-    ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0, CommandFlushBackup),
-    ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0, CommandSlaveOf),
+    ADD_CMD("flushbackup", 1, "read-only no-script", 0, 0, 0,
+            CommandFlushBackup),
+    ADD_CMD("slaveof", 3, "read-only exclusive no-script", 0, 0, 0,
+            CommandSlaveOf),
     ADD_CMD("stats", 1, "read-only", 0, 0, 0, CommandStats),
 
-    ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0, CommandReplConf),
-    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0, CommandPSync),
-    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchMeta),
-    ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0, 0, CommandFetchFile),
-    ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0, CommandDBName),
+    ADD_CMD("replconf", -3, "read-only replication no-script", 0, 0, 0,
+            CommandReplConf),
+    ADD_CMD("psync", -2, "read-only replication no-multi no-script", 0, 0, 0,
+            CommandPSync),
+    ADD_CMD("_fetch_meta", 1, "read-only replication no-multi no-script", 0, 0,
+            0, CommandFetchMeta),
+    ADD_CMD("_fetch_file", 2, "read-only replication no-multi no-script", 0, 0,
+            0, CommandFetchFile),
+    ADD_CMD("_db_name", 1, "read-only replication no-multi", 0, 0, 0,
+            CommandDBName),
+
+    // TS
+    ADD_CMD("tsmadd", -6, "write", 1, -1, 3, CommandTSMSet),
 };
 
 // Command table after rename-command directive
