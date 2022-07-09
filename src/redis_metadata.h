@@ -37,6 +37,7 @@ enum RedisType {
   kRedisZSet,
   kRedisBitmap,
   kRedisSortedint,
+  kRedisTS,
 };
 
 enum RedisCommand {
