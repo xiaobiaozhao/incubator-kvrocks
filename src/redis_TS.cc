@@ -30,15 +30,20 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
   LockGuard guard(storage_->GetLockManager(), primary_key);
   for (const auto &pair : pairs) {
     std::string ns_key;
-    // uint32_t expire = 0;
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    metadata.expire = uint32_t(now) + pair.ttl;
+    if (pair.ttl > 0) {
+      metadata.expire = uint32_t(now) + pair.ttl;
+    } else {
+      metadata.expire = 0;
+    }
     metadata.Encode(&bytes);
     WriteBatchLogData log_data(kRedisTS);
     batch.PutLogData(log_data.Encode());
     bytes.append(pair.value.data(), pair.value.size());
-    AppendNamespacePrefix(pair.combination_key, &ns_key);
+    std::string combination_key =
+        pair.primary_key + pair.clustering_id + pair.timestamp;
+    AppendNamespacePrefix(combination_key, &ns_key);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
   auto s = storage_->Write(rocksdb::WriteOptions(), &batch);

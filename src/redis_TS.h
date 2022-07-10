@@ -27,9 +27,17 @@
 #include "redis_metadata.h"
 
 typedef struct {
-  Slice combination_key;  // primary_key_clustering_id_ms;
-  Slice value;
-  int ttl;
+  // Slice combination_key;  // primary_key_clustering_id_ms;
+  std::string &primary_key;
+  std::string &timestamp;  // ms
+  std::string &clustering_id;
+  std::string &value;
+  long long ttl;
+  long long fromTimestamp;
+  long long toTimestamp;
+  bool limit;          // true need limit
+  uint32_t limit_num;  // limit num
+  bool aes;            // true order aes, false desc
 } TSPairs;
 
 namespace Redis {

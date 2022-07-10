@@ -4746,10 +4746,9 @@ class CommandTSMSet : public Commander {
     std::string &timestamp = args_[2];
     // TODO timestamp optimize
     for (size_t i = 3; i < args_.size(); i += 3) {
-      std::string &clustering_id = args_[i];
-      tss.emplace_back(TSPairs{primary_key + clustering_id + timestamp,
-                               args_[i + 1], std::stoi(args_[i + 2])});
-      // tss.emplace_back(TSPairs{args_[i], args_[i + 1]});
+      tss.emplace_back(TSPairs{primary_key, timestamp, args_[i], args_[i + 1],
+                               std::stoll(args_[i + 2]), 0, 0, false, 0,
+                               false});
     }
     rocksdb::Status s = ts_db.MAdd(primary_key, tss);
     if (!s.ok()) {
