@@ -4730,7 +4730,7 @@ class CommandScript : public Commander {
   std::string subcommand_;
 };
 
-class CommandTSMSet : public Commander {
+class CommandTSAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // TSADD primary_key timestamp class_id value ttl [class_id value ttl]
@@ -4755,6 +4755,66 @@ class CommandTSMSet : public Commander {
       return Status(Status::RedisExecErr, s.ToString());
     }
     *output = Redis::SimpleString("OK");
+    return Status::OK();
+  }
+};
+
+class CommandTSRange : public Commander {
+ public:
+  Status Parse(const std::vector<std::string> &args) override {
+    // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit num
+    // aes|desc]
+    std::size_t pos{};
+    switch (args.size()) {
+      case 5:
+        // TSRANGE primary_key clustering_id fromTimestamp toTimestamp
+        try {
+          std::stoll(args[3], &pos);
+          if (args[3].size() != pos) {
+            return Status(Status::RedisParseErr, errWrongNumOfArguments);
+          }
+        } catch (std::invalid_argument const &ex) {
+          return Status(Status::RedisParseErr, errWrongNumOfArguments);
+        } catch (std::out_of_range const &ex) {
+          return Status(Status::RedisParseErr, errWrongNumOfArguments);
+        }
+        break;
+      case 8:
+        // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit
+        // num aes|desc]
+        break;
+      default:
+        return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+
+    return Commander::Parse(args);
+  }
+  Status Execute(Server *svr, Connection *conn, std::string *output) override {
+    // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit num
+    // aes|desc]
+    Redis::TS ts_db(svr->storage_, conn->GetNamespace());
+    std::vector<TSFieldValue> tsvalues;
+    std::string no_use;
+    TSPairs tspair{args_[1],
+                   no_use,
+                   args_[2],
+                   no_use,
+                   0,
+                   std::stoll(args_[3]),
+                   std::stoll(args_[4]),
+                   false,
+                   0,
+                   false};
+    rocksdb::Status s = ts_db.Range(tspair, &tsvalues);
+    if (!s.ok()) {
+      return Status(Status::RedisExecErr, s.ToString());
+    }
+    *output = "*" + std::to_string(tsvalues.size() * 3) + CRLF;
+    for (const auto &fv : tsvalues) {
+      *output += Redis::BulkString(fv.timestamp);
+      *output += Redis::BulkString(fv.clustering_id);
+      *output += Redis::BulkString(fv.value);
+    }
     return Status::OK();
   }
 };
@@ -4970,7 +5030,8 @@ CommandAttributes redisCommandTable[] = {
             CommandDBName),
 
     // TS
-    ADD_CMD("tsmadd", -6, "write", 1, -1, 3, CommandTSMSet),
+    ADD_CMD("tsmadd", -6, "write", 1, -1, 3, CommandTSAdd),
+    ADD_CMD("tsrange", -5, "write", 1, -1, 3, CommandTSRange),
 };
 
 // Command table after rename-command directive

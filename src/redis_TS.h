@@ -40,7 +40,14 @@ typedef struct {
   bool aes;            // true order aes, false desc
 } TSPairs;
 
+typedef struct {
+  std::string clustering_id;
+  std::string timestamp;
+  std::string value;
+} TSFieldValue;
+
 namespace Redis {
+const int TS_HDR_SIZE = 5;
 class TS : public Database {
  public:
   explicit TS(Engine::Storage *storage, const std::string &ns)
@@ -48,5 +55,6 @@ class TS : public Database {
   rocksdb::Status MAdd(const std::string primary_key,
                        const std::vector<TSPairs> &pairs);
   rocksdb::Status Add(const std::string primary_key, TSPairs &pair);
+  rocksdb::Status Range(TSPairs &pair, std::vector<TSFieldValue> *values);
 };
 }  // namespace Redis

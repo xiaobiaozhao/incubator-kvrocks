@@ -20,6 +20,8 @@
 
 #include "redis_TS.h"
 
+#include "db_util.h"
+
 namespace Redis {
 // TODO: add lock
 rocksdb::Status TS::MAdd(const std::string primary_key,
@@ -42,9 +44,9 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
     batch.PutLogData(log_data.Encode());
     bytes.append(pair.value.data(), pair.value.size());
     std::string combination_key =
-        pair.primary_key + pair.clustering_id + pair.timestamp;
+        pair.primary_key + "~" + pair.clustering_id + "~" + pair.timestamp;
     AppendNamespacePrefix(combination_key, &ns_key);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch.Put(ns_key, bytes);
   }
   auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
   if (!s.ok()) return s;
@@ -54,5 +56,31 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
 rocksdb::Status TS::Add(const std::string primary_key, TSPairs &pair) {
   std::vector<TSPairs> pairs{pair};
   return MAdd(primary_key, pairs);
+}
+
+rocksdb::Status TS::Range(TSPairs &pair, std::vector<TSFieldValue> *values) {
+  std::string ns_key;
+  std::string prefix_key = "";
+  prefix_key += pair.primary_key;
+
+  AppendNamespacePrefix(prefix_key, &ns_key);
+
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+  auto iter = DBUtil::UniqueIterator(db_, rocksdb::ReadOptions());
+  for (iter->Seek(ns_key); iter->Valid(); iter->Next()) {
+    if (!iter->key().starts_with(ns_key)) {
+      break;
+    }
+    std::string ns;
+    std::string user_key;
+    ExtractNamespaceKey(iter->key(), &ns, &user_key,
+                        storage_->IsSlotIdEncoded());
+    values->emplace_back(TSFieldValue{
+        user_key, "0", iter->value().ToString().substr(TS_HDR_SIZE)});
+  }
+  return rocksdb::Status::OK();
 }
 }  // namespace Redis
