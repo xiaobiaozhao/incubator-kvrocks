@@ -25,7 +25,7 @@
 namespace Redis {
 // TODO: add lock
 rocksdb::Status TS::MAdd(const std::string primary_key,
-                         const std::vector<TSPairs> &pairs) {
+                         const std::vector<TSPair> &pairs) {
   rocksdb::WriteBatch batch;
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -43,8 +43,7 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
     WriteBatchLogData log_data(kRedisTS);
     batch.PutLogData(log_data.Encode());
     bytes.append(pair.value.data(), pair.value.size());
-    std::string combination_key =
-        pair.primary_key + "~" + pair.clustering_id + "~" + pair.timestamp;
+    std::string combination_key = TSCombinKey::EncodeAddKey(pair);
     AppendNamespacePrefix(combination_key, &ns_key);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
   }
@@ -53,36 +52,18 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TS::Add(const std::string primary_key, TSPairs &pair) {
-  std::vector<TSPairs> pairs{pair};
+rocksdb::Status TS::Add(const std::string primary_key, TSPair &pair) {
+  std::vector<TSPair> pairs{pair};
   return MAdd(primary_key, pairs);
-}
-
-static std::string MakePrefixKey(TSPairs &pair) {
-  std::string prefix_key;
-  prefix_key.append(pair.primary_key);
-  if (pair.clustering_id.empty()) {
-    return prefix_key;
-  }
-
-  prefix_key.append("~");
-  if ("*" == pair.clustering_id.substr(pair.clustering_id.length() - 1)) {
-    prefix_key.append(
-        pair.clustering_id.substr(0, pair.clustering_id.length() - 1));
-  } else {
-    prefix_key.append(pair.clustering_id).append("~");
-  }
-
-  return prefix_key;
 }
 
 static std::string FilterValue(const std::string &ori_value) {
   return ori_value.substr(TS_HDR_SIZE);
 }
 
-rocksdb::Status TS::Range(TSPairs &pair, std::vector<TSFieldValue> *values) {
+rocksdb::Status TS::Range(TSPair &pair, std::vector<TSFieldValue> *values) {
   std::string ns_key;
-  std::string prefix_key = MakePrefixKey(pair);
+  std::string prefix_key = TSCombinKey::MakePrefixKey(pair);
 
   AppendNamespacePrefix(prefix_key, &ns_key);
 
@@ -103,11 +84,14 @@ rocksdb::Status TS::Range(TSPairs &pair, std::vector<TSFieldValue> *values) {
       continue;
     }
     std::string ns;
-    std::string user_key;
-    ExtractNamespaceKey(iter->key(), &ns, &user_key,
+    std::string combin_key;
+    ExtractNamespaceKey(iter->key(), &ns, &combin_key,
                         storage_->IsSlotIdEncoded());
-    values->emplace_back(
-        TSFieldValue{user_key, "0", FilterValue(iter->value().ToString())});
+    TSFieldValue tsfieldvalue = TSCombinKey::Decode(pair, combin_key);
+
+    values->emplace_back(TSFieldValue{tsfieldvalue.clustering_id,
+                                      tsfieldvalue.timestamp,
+                                      FilterValue(iter->value().ToString())});
   }
   return rocksdb::Status::OK();
 }
