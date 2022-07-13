@@ -4741,14 +4741,13 @@ class CommandTSAdd : public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::TS ts_db(svr->storage_, conn->GetNamespace());
-    std::vector<TSPairs> tss;
+    std::vector<TSPair> tss;
     std::string &primary_key = args_[1];
     std::string &timestamp = args_[2];
     // TODO timestamp optimize
     for (size_t i = 3; i < args_.size(); i += 3) {
-      tss.emplace_back(TSPairs{primary_key, timestamp, args_[i], args_[i + 1],
-                               std::stoll(args_[i + 2]), 0, 0, false, 0,
-                               false});
+      tss.emplace_back(TSPair{primary_key, timestamp, args_[i], args_[i + 1],
+                              std::stoll(args_[i + 2]), 0, 0, false, 0, false});
     }
     rocksdb::Status s = ts_db.MAdd(primary_key, tss);
     if (!s.ok()) {
@@ -4795,16 +4794,16 @@ class CommandTSRange : public Commander {
     Redis::TS ts_db(svr->storage_, conn->GetNamespace());
     std::vector<TSFieldValue> tsvalues;
     std::string no_use;
-    TSPairs tspair{args_[1],
-                   no_use,
-                   args_[2],
-                   no_use,
-                   0,
-                   std::stoll(args_[3]),
-                   std::stoll(args_[4]),
-                   false,
-                   0,
-                   false};
+    TSPair tspair{args_[1],
+                  no_use,
+                  args_[2],
+                  no_use,
+                  0,
+                  std::stoll(args_[3]),
+                  std::stoll(args_[4]),
+                  false,
+                  0,
+                  false};
     rocksdb::Status s = ts_db.Range(tspair, &tsvalues);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
