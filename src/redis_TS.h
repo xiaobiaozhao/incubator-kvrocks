@@ -32,8 +32,8 @@ typedef struct {
   std::string &clustering_id;
   std::string &value;
   long long ttl;
-  long long fromTimestamp;
-  long long toTimestamp;
+  long long from_timestamp;
+  long long to_timestamp;
   bool limit;          // true need limit
   uint32_t limit_num;  // limit num
   bool aes;            // true order aes, false desc
@@ -48,37 +48,38 @@ typedef struct {
 namespace Redis {
 class TSCombinKey {
  public:
+  static std::string MakeTSTimestamp(const std::string &timestamp) {
+    return std::string(TIMESTAMP_LEN - timestamp.length(), '0') + timestamp;
+  }
+
   static std::string EncodeAddKey(const TSPair &tspair) {
     // primary_key + cluster_id + timestamp(20B)
     // just for readful
     return tspair.primary_key + tspair.clustering_id +
-           std::string(TIMESTAMP_LEN - tspair.timestamp.length(), '0') +
-           tspair.timestamp;
+           MakeTSTimestamp(tspair.timestamp);
   }
 
   static TSFieldValue Decode(const TSPair &tspair,
                              const std::string &combin_key) {
     return TSFieldValue{
-        combin_key.substr(combin_key.find_first_not_of(
-            '0', combin_key.length() - TIMESTAMP_LEN)),
         combin_key.substr(
             tspair.primary_key.length(),
             combin_key.length() - tspair.primary_key.length() - TIMESTAMP_LEN),
-        ""};
+        combin_key.substr(combin_key.find_first_not_of(
+            '0', combin_key.length() - TIMESTAMP_LEN)),
+
+    };
   }
 
   static std::string MakePrefixKey(const TSPair &pair) {
     std::string prefix_key;
     prefix_key.append(pair.primary_key);
-    if (pair.clustering_id.empty()) {
-      return prefix_key;
-    }
-
-    if ('*' == pair.clustering_id.back()) {
-      prefix_key.append(
-          pair.clustering_id.substr(0, pair.clustering_id.length() - 1));
+    prefix_key.append(pair.clustering_id);
+    if (pair.aes) {
+      prefix_key.append(MakeTSTimestamp(std::to_string(pair.from_timestamp)));
     } else {
-      prefix_key.append(pair.clustering_id);
+      prefix_key.append(MakeTSTimestamp(std::to_string(pair.to_timestamp)));
+      prefix_key.append(" ");
     }
 
     return prefix_key;
@@ -96,6 +97,10 @@ class TS : public Database {
   rocksdb::Status MAdd(const std::string primary_key,
                        const std::vector<TSPair> &pairs);
   rocksdb::Status Add(const std::string primary_key, TSPair &pair);
-  rocksdb::Status Range(TSPair &pair, std::vector<TSFieldValue> *values);
+  rocksdb::Status Range(const TSPair &pair, std::vector<TSFieldValue> *values);
+  rocksdb::Status RangeAes(const TSPair &pair,
+                           std::vector<TSFieldValue> *values);
+  rocksdb::Status RangeDesc(const TSPair &pair,
+                            std::vector<TSFieldValue> *values);
 };
 }  // namespace Redis

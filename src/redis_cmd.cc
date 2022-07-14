@@ -4803,7 +4803,7 @@ class CommandTSRange : public Commander {
                   std::stoll(args_[4]),
                   false,
                   0,
-                  false};
+                  true};
     rocksdb::Status s = ts_db.Range(tspair, &tsvalues);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());

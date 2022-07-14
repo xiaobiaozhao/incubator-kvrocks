@@ -57,42 +57,76 @@ rocksdb::Status TS::Add(const std::string primary_key, TSPair &pair) {
   return MAdd(primary_key, pairs);
 }
 
-static std::string FilterValue(const std::string &ori_value) {
-  return ori_value.substr(TS_HDR_SIZE);
+static rocksdb::Status FilterValue(const std::string &raw_value,
+                                   std::string *value) {
+  if (value) {
+    value->clear();
+  }
+  Metadata metadata(kRedisNone, false);
+  metadata.Decode(raw_value);
+  if (metadata.Expired()) {
+    return rocksdb::Status::Expired(kErrMsgKeyExpired);
+  }
+  *value = raw_value.substr(TS_HDR_SIZE);
+  return rocksdb::Status::OK();
 }
 
-rocksdb::Status TS::Range(TSPair &pair, std::vector<TSFieldValue> *values) {
-  std::string ns_key;
-  std::string prefix_key = TSCombinKey::MakePrefixKey(pair);
+rocksdb::Status TS::RangeAes(const TSPair &pair,
+                             std::vector<TSFieldValue> *values) {
+  std::string ns_key, combin_key, value, ns;
+  u_int32_t limit_num = pair.limit_num;
 
+  std::string prefix_key = TSCombinKey::MakePrefixKey(pair);
   AppendNamespacePrefix(prefix_key, &ns_key);
 
-  LatestSnapShot ss(db_);
-  rocksdb::ReadOptions read_options;
-  read_options.snapshot = ss.GetSnapShot();
-  read_options.fill_cache = false;
   auto iter =
       DBUtil::UniqueIterator(db_, rocksdb::ReadOptions(), metadata_cf_handle_);
   for (iter->Seek(ns_key); iter->Valid(); iter->Next()) {
-    if (!iter->key().starts_with(ns_key)) {
+    std::string x = iter->key().ToString();
+    if (!iter->key().starts_with(ns_key.substr(0,
+        ns_key.length() - TSCombinKey::TIMESTAMP_LEN))) {
       break;
     }
 
-    Metadata metadata(kRedisNone, false);
-    metadata.Decode(iter->value().ToString());
-    if (metadata.Expired()) {
+    rocksdb::Status s = FilterValue(iter->value().ToString(), &value);
+    if (!s.ok()) {
       continue;
     }
-    std::string ns;
-    std::string combin_key;
+
+    ns.clear();
+    combin_key.clear();
     ExtractNamespaceKey(iter->key(), &ns, &combin_key,
                         storage_->IsSlotIdEncoded());
+
     TSFieldValue tsfieldvalue = TSCombinKey::Decode(pair, combin_key);
 
+    if (std::stoll(tsfieldvalue.timestamp) > pair.to_timestamp) {
+      break;
+    }
+
     values->emplace_back(TSFieldValue{tsfieldvalue.clustering_id,
-                                      tsfieldvalue.timestamp,
-                                      FilterValue(iter->value().ToString())});
+                                      tsfieldvalue.timestamp, value});
+    if (pair.limit && --limit_num <= 0) {
+      break;
+    }
   }
   return rocksdb::Status::OK();
+}
+
+rocksdb::Status TS::Range(const TSPair &pair,
+                          std::vector<TSFieldValue> *values) {
+  // LatestSnapShot ss(db_);
+  // rocksdb::ReadOptions read_options;
+  // read_options.snapshot = ss.GetSnapShot();
+  // read_options.fill_cache = false;
+  if (pair.limit && pair.limit_num <= 0) {
+    return rocksdb::Status::OK();
+  }
+
+  if (pair.aes) {
+    return RangeAes(pair, values);
+  } else {
+    return rocksdb::Status::OK();
+  }
 }
 }  // namespace Redis
