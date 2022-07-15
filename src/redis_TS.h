@@ -98,9 +98,5 @@ class TS : public Database {
                        const std::vector<TSPair> &pairs);
   rocksdb::Status Add(const std::string primary_key, TSPair &pair);
   rocksdb::Status Range(const TSPair &pair, std::vector<TSFieldValue> *values);
-  rocksdb::Status RangeAes(const TSPair &pair,
-                           std::vector<TSFieldValue> *values);
-  rocksdb::Status RangeDesc(const TSPair &pair,
-                            std::vector<TSFieldValue> *values);
 };
 }  // namespace Redis
