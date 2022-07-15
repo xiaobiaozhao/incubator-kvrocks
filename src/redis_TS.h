@@ -29,18 +29,23 @@
 typedef struct {
   std::string &primary_key;
   std::string &timestamp;  // ms
-  std::string &clustering_id;
+  std::string &field;
   std::string &value;
-  long long ttl;
-  long long from_timestamp;
-  long long to_timestamp;
-  bool limit;          // true need limit
-  uint32_t limit_num;  // limit num
-  bool aes;            // true order aes, false desc
-} TSPair;
+  std::string &ttl;
+} TSAddSpec;
 
 typedef struct {
-  std::string clustering_id;
+  std::string &primary_key;
+  std::string &field;
+  std::string &from_timestamp;
+  std::string &to_timestamp;
+  std::string &limit;      // true need limit
+  std::string &limit_num;  // limit num
+  std::string &order;      // true order aes, false desc
+} TSRangSpec;
+
+typedef struct {
+  std::string field;
   std::string timestamp;
   std::string value;
 } TSFieldValue;
@@ -52,34 +57,34 @@ class TSCombinKey {
     return std::string(TIMESTAMP_LEN - timestamp.length(), '0') + timestamp;
   }
 
-  static std::string EncodeAddKey(const TSPair &tspair) {
+  static std::string EncodeAddKey(const TSAddSpec &tspair) {
     // primary_key + cluster_id + timestamp(20B)
     // just for readful
-    return tspair.primary_key + tspair.clustering_id +
+    return tspair.primary_key + tspair.field +
            MakeTSTimestamp(tspair.timestamp);
   }
 
-  static TSFieldValue Decode(const TSPair &tspair,
+  static TSFieldValue Decode(const TSRangSpec &ts_rang_pair,
                              const std::string &combin_key) {
     return TSFieldValue{
-        combin_key.substr(
-            tspair.primary_key.length(),
-            combin_key.length() - tspair.primary_key.length() - TIMESTAMP_LEN),
+        combin_key.substr(ts_rang_pair.primary_key.length(),
+                          combin_key.length() -
+                              ts_rang_pair.primary_key.length() -
+                              TIMESTAMP_LEN),
         combin_key.substr(combin_key.find_first_not_of(
             '0', combin_key.length() - TIMESTAMP_LEN)),
-
-    };
+        ""};
   }
 
-  static std::string MakePrefixKey(const TSPair &pair) {
+  static std::string MakePrefixKey(const TSRangSpec &rang_pair) {
     std::string prefix_key;
-    prefix_key.append(pair.primary_key);
-    prefix_key.append(pair.clustering_id);
-    if (pair.aes) {
-      prefix_key.append(MakeTSTimestamp(std::to_string(pair.from_timestamp)));
-    } else {
-      prefix_key.append(MakeTSTimestamp(std::to_string(pair.to_timestamp)));
+    prefix_key.append(rang_pair.primary_key);
+    prefix_key.append(rang_pair.field);
+    if ("desc" == rang_pair.order) {
+      prefix_key.append(MakeTSTimestamp(rang_pair.to_timestamp));
       prefix_key.append(" ");
+    } else {
+      prefix_key.append(MakeTSTimestamp(rang_pair.from_timestamp));
     }
 
     return prefix_key;
@@ -94,9 +99,8 @@ class TS : public Database {
  public:
   explicit TS(Engine::Storage *storage, const std::string &ns)
       : Database(storage, ns) {}
-  rocksdb::Status MAdd(const std::string primary_key,
-                       const std::vector<TSPair> &pairs);
-  rocksdb::Status Add(const std::string primary_key, TSPair &pair);
-  rocksdb::Status Range(const TSPair &pair, std::vector<TSFieldValue> *values);
+  rocksdb::Status MAdd(const std::vector<TSAddSpec> &pairs);
+  rocksdb::Status Range(const TSRangSpec &rang_pair,
+                        std::vector<TSFieldValue> *values);
 };
 }  // namespace Redis
