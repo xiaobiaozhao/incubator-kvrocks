@@ -109,7 +109,8 @@ rocksdb::Status TS::Range(const TSRangSpec &rang_pair,
 
     TSFieldValue tsfieldvalue = TSCombinKey::Decode(rang_pair, combin_key);
 
-    if (!order_desc && std::stoll(tsfieldvalue.timestamp) > to_timestamp) {
+    if (!order_desc && to_timestamp > 0 &&
+        std::stoll(tsfieldvalue.timestamp) > to_timestamp) {
       break;
     }
 

@@ -4718,8 +4718,25 @@ class CommandTSAdd : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
     // TSADD primary_key timestamp class_id value ttl [class_id value ttl]
-    if (args.size() % 3 != 0) {
+    if (args.size() < 6 || args.size() % 3 != 0) {
       return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    }
+
+    try {
+      long long timestamp = std::stoll(args[2]);
+      if (timestamp < 0) {
+        return Status(Status::RedisParseErr, errValueMustBePositive);
+      }
+      for (std::size_t i = 5; i < args.size(); i += 3) {
+        long long ttl = std::stoll(args[i]);
+        if (ttl < 0) {
+          return Status(Status::RedisParseErr, errValueMustBePositive);
+        }
+      }
+    } catch (std::invalid_argument const &ex) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    } catch (std::out_of_range const &ex) {
+      return Status(Status::RedisParseErr, errValueMustBePositive);
     }
     return Commander::Parse(args);
   }
@@ -4759,10 +4776,17 @@ class CommandTSRange : public Commander {
             return Status(Status::RedisParseErr, errInvalidSyntax);
           }
           std::stoll(args[6], &pos);
-        case 5:
-          std::stoll(args[3], &pos);
-          std::stoll(args[4], &pos);
+        case 5: {
+          long long f = std::stoll(args[3], &pos);
+          if (f < 0) {
+            return Status(Status::RedisParseErr, errValueMustBePositive);
+          }
+          long long t = std::stoll(args[4], &pos);
+          if (t > 0 && t < f) {
+            return Status(Status::RedisParseErr, errValueMustBePositive);
+          }
           break;
+        }
         default:
           return Status(Status::RedisParseErr, errWrongNumOfArguments);
       }

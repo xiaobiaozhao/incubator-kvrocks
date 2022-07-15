@@ -81,8 +81,11 @@ class TSCombinKey {
     prefix_key.append(rang_pair.primary_key);
     prefix_key.append(rang_pair.field);
     if ("desc" == rang_pair.order) {
-      prefix_key.append(MakeTSTimestamp(rang_pair.to_timestamp));
-      prefix_key.append(" ");
+      if (std::stoll(rang_pair.to_timestamp) > 0) {
+        prefix_key.append(MakeTSTimestamp(rang_pair.to_timestamp));
+      } else {
+        prefix_key.append(std::string(TIMESTAMP_LEN, '9'));
+      }
     } else {
       prefix_key.append(MakeTSTimestamp(rang_pair.from_timestamp));
     }
