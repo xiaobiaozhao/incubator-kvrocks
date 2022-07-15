@@ -71,18 +71,26 @@ static rocksdb::Status FilterValue(const std::string &raw_value,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TS::RangeAes(const TSPair &pair,
-                             std::vector<TSFieldValue> *values) {
+rocksdb::Status TS::Range(const TSPair &pair,
+                          std::vector<TSFieldValue> *values) {
+  if (pair.limit && pair.limit_num <= 0) {
+    return rocksdb::Status::OK();
+  }
+
   std::string ns_key, combin_key, value, ns;
   u_int32_t limit_num = pair.limit_num;
 
   std::string prefix_key = TSCombinKey::MakePrefixKey(pair);
   AppendNamespacePrefix(prefix_key, &ns_key);
 
-  auto iter =
-      DBUtil::UniqueIterator(db_, rocksdb::ReadOptions(), metadata_cf_handle_);
-  for (iter->Seek(ns_key); iter->Valid(); iter->Next()) {
-    std::string x = iter->key().ToString();
+  LatestSnapShot ss(db_);
+  rocksdb::ReadOptions read_options;
+  read_options.snapshot = ss.GetSnapShot();
+  read_options.fill_cache = false;
+
+  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  for (pair.aes ? iter->Seek(ns_key) : iter->SeekForPrev(ns_key); iter->Valid();
+       pair.aes ? iter->Next() : iter->Prev()) {
     if (!iter->key().starts_with(ns_key.substr(0,
         ns_key.length() - TSCombinKey::TIMESTAMP_LEN))) {
       break;
@@ -100,8 +108,14 @@ rocksdb::Status TS::RangeAes(const TSPair &pair,
 
     TSFieldValue tsfieldvalue = TSCombinKey::Decode(pair, combin_key);
 
-    if (std::stoll(tsfieldvalue.timestamp) > pair.to_timestamp) {
-      break;
+    if (pair.aes) {
+      if (std::stoll(tsfieldvalue.timestamp) > pair.to_timestamp) {
+        break;
+      }
+    } else {
+      if (std::stoll(tsfieldvalue.timestamp) < pair.from_timestamp) {
+        break;
+      }
     }
 
     values->emplace_back(TSFieldValue{tsfieldvalue.clustering_id,
@@ -111,22 +125,5 @@ rocksdb::Status TS::RangeAes(const TSPair &pair,
     }
   }
   return rocksdb::Status::OK();
-}
-
-rocksdb::Status TS::Range(const TSPair &pair,
-                          std::vector<TSFieldValue> *values) {
-  // LatestSnapShot ss(db_);
-  // rocksdb::ReadOptions read_options;
-  // read_options.snapshot = ss.GetSnapShot();
-  // read_options.fill_cache = false;
-  if (pair.limit && pair.limit_num <= 0) {
-    return rocksdb::Status::OK();
-  }
-
-  if (pair.aes) {
-    return RangeAes(pair, values);
-  } else {
-    return rocksdb::Status::OK();
-  }
 }
 }  // namespace Redis
