@@ -53,6 +53,7 @@ const char *kZSetScoreColumnFamilyName = "zset_score";
 const char *kMetadataColumnFamilyName = "metadata";
 const char *kSubkeyColumnFamilyName = "default";
 const char *kPropagateColumnFamilyName = "propagate";
+const char *kTimeSeriesColumnFamilyName = "timeseries";
 
 const char *kPropagateScriptCommand = "script";
 
@@ -301,6 +302,8 @@ Status Storage::Open(bool read_only) {
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kZSetScoreColumnFamilyName, subkey_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPubSubColumnFamilyName, pubsub_opts));
   column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(kPropagateColumnFamilyName, propagate_opts));
+  column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(
+      kTimeSeriesColumnFamilyName, metadata_opts));
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
@@ -568,6 +571,8 @@ rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
     return cf_handles_[3];
   } else if (name == kPropagateColumnFamilyName) {
     return cf_handles_[4];
+  } else if (name == kTimeSeriesColumnFamilyName) {
+    return cf_handles_[5];
   }
   return cf_handles_[0];
 }

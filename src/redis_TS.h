@@ -101,9 +101,14 @@ const int TS_HDR_SIZE = 5;
 class TS : public Database {
  public:
   explicit TS(Engine::Storage *storage, const std::string &ns)
-      : Database(storage, ns) {}
+      : Database(storage, ns),
+        ts_cf_handle_(
+            storage->GetCFHandle(Engine::kTimeSeriesColumnFamilyName)) {}
   rocksdb::Status MAdd(const std::vector<TSAddSpec> &pairs);
   rocksdb::Status Range(const TSRangSpec &rang_pair,
                         std::vector<TSFieldValue> *values);
+
+ private:
+  rocksdb::ColumnFamilyHandle *ts_cf_handle_;
 };
 }  // namespace Redis

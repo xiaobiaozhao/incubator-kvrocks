@@ -45,7 +45,7 @@ rocksdb::Status TS::MAdd(const std::vector<TSAddSpec> &pairs) {
     bytes.append(pair.value);
     std::string combination_key = TSCombinKey::EncodeAddKey(pair);
     AppendNamespacePrefix(combination_key, &ns_key);
-    batch.Put(metadata_cf_handle_, ns_key, bytes);
+    batch.Put(ts_cf_handle_, ns_key, bytes);
   }
   auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
   if (!s.ok()) return s;
@@ -90,7 +90,7 @@ rocksdb::Status TS::Range(const TSRangSpec &rang_pair,
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
 
-  auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
+  auto iter = DBUtil::UniqueIterator(db_, read_options, ts_cf_handle_);
   for (order_desc ? iter->SeekForPrev(ns_key) : iter->Seek(ns_key);
        iter->Valid(); order_desc ? iter->Prev() : iter->Next()) {
     if (!iter->key().starts_with(prefix_key_p_f)) {

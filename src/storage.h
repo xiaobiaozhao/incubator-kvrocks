@@ -52,6 +52,7 @@ extern const char *kPubSubColumnFamilyName;
 extern const char *kZSetScoreColumnFamilyName;
 extern const char *kMetadataColumnFamilyName;
 extern const char *kSubkeyColumnFamilyName;
+extern const char *kTimeSeriesColumnFamilyName;
 extern const char *kPropagateColumnFamilyName;
 
 extern const char *kPropagateScriptCommand;
