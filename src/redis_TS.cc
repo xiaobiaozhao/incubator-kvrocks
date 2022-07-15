@@ -24,8 +24,7 @@
 
 namespace Redis {
 // TODO: add lock
-rocksdb::Status TS::MAdd(const std::string primary_key,
-                         const std::vector<TSPair> &pairs) {
+rocksdb::Status TS::MAdd(const std::vector<TSAddSpec> &pairs) {
   rocksdb::WriteBatch batch;
   int64_t now;
   rocksdb::Env::Default()->GetCurrentTime(&now);
@@ -34,15 +33,16 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
     std::string ns_key;
     std::string bytes;
     Metadata metadata(kRedisString, false);
-    if (pair.ttl > 0) {
-      metadata.expire = uint32_t(now) + pair.ttl;
+    int ttl = std::stoi(pair.ttl);
+    if (ttl > 0) {
+      metadata.expire = uint32_t(now) + ttl;
     } else {
       metadata.expire = 0;
     }
     metadata.Encode(&bytes);
     WriteBatchLogData log_data(kRedisTS);
     batch.PutLogData(log_data.Encode());
-    bytes.append(pair.value.data(), pair.value.size());
+    bytes.append(pair.value);
     std::string combination_key = TSCombinKey::EncodeAddKey(pair);
     AppendNamespacePrefix(combination_key, &ns_key);
     batch.Put(metadata_cf_handle_, ns_key, bytes);
@@ -50,11 +50,6 @@ rocksdb::Status TS::MAdd(const std::string primary_key,
   auto s = storage_->Write(rocksdb::WriteOptions(), &batch);
   if (!s.ok()) return s;
   return rocksdb::Status::OK();
-}
-
-rocksdb::Status TS::Add(const std::string primary_key, TSPair &pair) {
-  std::vector<TSPair> pairs{pair};
-  return MAdd(primary_key, pairs);
 }
 
 static rocksdb::Status FilterValue(const std::string &raw_value,
@@ -71,17 +66,24 @@ static rocksdb::Status FilterValue(const std::string &raw_value,
   return rocksdb::Status::OK();
 }
 
-rocksdb::Status TS::Range(const TSPair &pair,
+rocksdb::Status TS::Range(const TSRangSpec &rang_pair,
                           std::vector<TSFieldValue> *values) {
-  if (pair.limit && pair.limit_num <= 0) {
+  long long from_timestamp = std::stoll(rang_pair.from_timestamp);
+  long long to_timestamp = std::stoll(rang_pair.to_timestamp);
+  int limit_num = std::stoi(rang_pair.limit_num);
+  bool need_limit = "limit" == rang_pair.limit;
+  bool order_desc = "desc" == rang_pair.order;
+
+  if (need_limit && limit_num <= 0) {
     return rocksdb::Status::OK();
   }
 
   std::string ns_key, combin_key, value, ns;
-  u_int32_t limit_num = pair.limit_num;
 
-  std::string prefix_key = TSCombinKey::MakePrefixKey(pair);
+  std::string prefix_key = TSCombinKey::MakePrefixKey(rang_pair);
   AppendNamespacePrefix(prefix_key, &ns_key);
+  std::string prefix_key_p_f =
+      ns_key.substr(0, ns_key.length() - TSCombinKey::TIMESTAMP_LEN);
 
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
@@ -89,10 +91,9 @@ rocksdb::Status TS::Range(const TSPair &pair,
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
-  for (pair.aes ? iter->Seek(ns_key) : iter->SeekForPrev(ns_key); iter->Valid();
-       pair.aes ? iter->Next() : iter->Prev()) {
-    if (!iter->key().starts_with(ns_key.substr(0,
-        ns_key.length() - TSCombinKey::TIMESTAMP_LEN))) {
+  for (order_desc ? iter->SeekForPrev(ns_key) : iter->Seek(ns_key);
+       iter->Valid(); order_desc ? iter->Prev() : iter->Next()) {
+    if (!iter->key().starts_with(prefix_key_p_f)) {
       break;
     }
 
@@ -106,21 +107,20 @@ rocksdb::Status TS::Range(const TSPair &pair,
     ExtractNamespaceKey(iter->key(), &ns, &combin_key,
                         storage_->IsSlotIdEncoded());
 
-    TSFieldValue tsfieldvalue = TSCombinKey::Decode(pair, combin_key);
+    TSFieldValue tsfieldvalue = TSCombinKey::Decode(rang_pair, combin_key);
 
-    if (pair.aes) {
-      if (std::stoll(tsfieldvalue.timestamp) > pair.to_timestamp) {
-        break;
-      }
-    } else {
-      if (std::stoll(tsfieldvalue.timestamp) < pair.from_timestamp) {
-        break;
-      }
+    if (!order_desc && std::stoll(tsfieldvalue.timestamp) > to_timestamp) {
+      break;
     }
 
-    values->emplace_back(TSFieldValue{tsfieldvalue.clustering_id,
-                                      tsfieldvalue.timestamp, value});
-    if (pair.limit && --limit_num <= 0) {
+    if (order_desc && std::stoll(tsfieldvalue.timestamp) < from_timestamp) {
+      break;
+    }
+
+    values->emplace_back(
+        TSFieldValue{tsfieldvalue.field, tsfieldvalue.timestamp, value});
+
+    if (need_limit && --limit_num <= 0) {
       break;
     }
   }

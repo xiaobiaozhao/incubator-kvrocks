@@ -4725,15 +4725,15 @@ class CommandTSAdd : public Commander {
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
     Redis::TS ts_db(svr->storage_, conn->GetNamespace());
-    std::vector<TSPair> tss;
+    std::vector<TSAddSpec> tss;
     std::string &primary_key = args_[1];
     std::string &timestamp = args_[2];
     // TODO timestamp optimize
     for (size_t i = 3; i < args_.size(); i += 3) {
-      tss.emplace_back(TSPair{primary_key, timestamp, args_[i], args_[i + 1],
-                              std::stoll(args_[i + 2]), 0, 0, false, 0, false});
+      tss.emplace_back(TSAddSpec{primary_key, timestamp, args_[i], args_[i + 1],
+                                 args_[i + 2]});
     }
-    rocksdb::Status s = ts_db.MAdd(primary_key, tss);
+    rocksdb::Status s = ts_db.MAdd(tss);
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
@@ -4745,57 +4745,76 @@ class CommandTSAdd : public Commander {
 class CommandTSRange : public Commander {
  public:
   Status Parse(const std::vector<std::string> &args) override {
-    // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit num
-    // aes|desc]
+    // TSRANGE primary_key field fromTimestamp toTimestamp
+    // [limit num [aes|desc]]
     std::size_t pos{};
-    switch (args.size()) {
-      case 5:
-        // TSRANGE primary_key clustering_id fromTimestamp toTimestamp
-        try {
-          std::stoll(args[3], &pos);
-          if (args[3].size() != pos) {
-            return Status(Status::RedisParseErr, errWrongNumOfArguments);
+    try {
+      switch (args.size()) {
+        case 8:
+          if (!(args[7] == "aes" || args[7] == "desc")) {
+            return Status(Status::RedisParseErr, errInvalidSyntax);
           }
-        } catch (std::invalid_argument const &ex) {
+        case 7:
+          if (args[5] != "limit") {
+            return Status(Status::RedisParseErr, errInvalidSyntax);
+          }
+          std::stoll(args[6], &pos);
+        case 5:
+          std::stoll(args[3], &pos);
+          std::stoll(args[4], &pos);
+          break;
+        default:
           return Status(Status::RedisParseErr, errWrongNumOfArguments);
-        } catch (std::out_of_range const &ex) {
-          return Status(Status::RedisParseErr, errWrongNumOfArguments);
-        }
-        break;
-      case 8:
-        // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit
-        // num aes|desc]
-        break;
-      default:
-        return Status(Status::RedisParseErr, errWrongNumOfArguments);
+      }
+    } catch (std::invalid_argument const &ex) {
+      return Status(Status::RedisParseErr, errValueNotInterger);
+    } catch (std::out_of_range const &ex) {
+      return Status(Status::RedisParseErr, errValueMustBePositive);
     }
 
     return Commander::Parse(args);
   }
   Status Execute(Server *svr, Connection *conn, std::string *output) override {
-    // TSRANGE primary_key clustering_id fromTimestamp toTimestamp [limit num
+    // TSRANGE primary_key field fromTimestamp toTimestamp [limit num
     // aes|desc]
     Redis::TS ts_db(svr->storage_, conn->GetNamespace());
-    std::vector<TSFieldValue> tsvalues;
-    std::string no_use;
-    TSPair tspair{args_[1],
-                  no_use,
-                  args_[2],
-                  no_use,
-                  0,
-                  std::stoll(args_[3]),
-                  std::stoll(args_[4]),
-                  false,
-                  0,
-                  true};
-    rocksdb::Status s = ts_db.Range(tspair, &tsvalues);
+    std::vector<TSFieldValue> ts_values;
+    rocksdb::Status s;
+    switch (args_.size()) {
+      case 8: {
+        TSRangSpec ts_rang_spec{args_[1], args_[2], args_[3], args_[4],
+                                args_[5], args_[6], args_[7]};
+        s = ts_db.Range(ts_rang_spec, &ts_values);
+        break;
+      }
+      case 7: {
+        std::string order = "aes";
+        TSRangSpec ts_rang_spec{args_[1], args_[2], args_[3], args_[4],
+                                args_[5], args_[6], order};
+        s = ts_db.Range(ts_rang_spec, &ts_values);
+        break;
+      }
+      case 5: {
+        std::string limit = "limit";
+        std::string limit_num = "2147483647";  // max int
+        std::string order = "aes";
+        TSRangSpec ts_rang_spec{args_[1], args_[2],  args_[3], args_[4],
+                                limit,    limit_num, order};
+        s = ts_db.Range(ts_rang_spec, &ts_values);
+        break;
+      }
+      default:
+        return Status(Status::RedisParseErr, errWrongNumOfArguments);
+        break;
+    }
+
     if (!s.ok()) {
       return Status(Status::RedisExecErr, s.ToString());
     }
-    *output = "*" + std::to_string(tsvalues.size() * 3) + CRLF;
-    for (const auto &fv : tsvalues) {
+    *output = "*" + std::to_string(ts_values.size() * 3) + CRLF;
+    for (const auto &fv : ts_values) {
       *output += Redis::BulkString(fv.timestamp);
-      *output += Redis::BulkString(fv.clustering_id);
+      *output += Redis::BulkString(fv.field);
       *output += Redis::BulkString(fv.value);
     }
     return Status::OK();
