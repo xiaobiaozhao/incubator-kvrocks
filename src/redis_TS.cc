@@ -78,22 +78,21 @@ rocksdb::Status TS::Range(const TSRangSpec &rang_pair,
     return rocksdb::Status::OK();
   }
 
-  std::string ns_key, combin_key, value, ns;
+  std::string ns_key, combin_key, value, ns, ns_key_m_f;
 
   std::string prefix_key = TSCombinKey::MakePrefixKey(rang_pair);
   AppendNamespacePrefix(prefix_key, &ns_key);
-  std::string prefix_key_p_f =
-      ns_key.substr(0, ns_key.length() - TSCombinKey::TIMESTAMP_LEN);
-
+  AppendNamespacePrefix(TSCombinKey::MakePrefixKeyMF(rang_pair), &ns_key_m_f);
   LatestSnapShot ss(db_);
   rocksdb::ReadOptions read_options;
   read_options.snapshot = ss.GetSnapShot();
   read_options.fill_cache = false;
 
   auto iter = DBUtil::UniqueIterator(db_, read_options, metadata_cf_handle_);
-  for (order_desc ? iter->SeekForPrev(ns_key) : iter->Seek(ns_key);
-       iter->Valid(); order_desc ? iter->Prev() : iter->Next()) {
-    if (!iter->key().starts_with(prefix_key_p_f)) {
+  for (order_desc ? iter->Seek(ns_key) : iter->SeekForPrev(ns_key);
+       iter->Valid(); order_desc ? iter->Next() : iter->Prev()) {
+    // for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (!iter->key().starts_with(ns_key_m_f)) {
       break;
     }
 

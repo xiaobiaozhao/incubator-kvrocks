@@ -54,7 +54,8 @@ namespace Redis {
 class TSCombinKey {
  public:
   static std::string MakeTSTimestamp(const std::string &timestamp) {
-    return std::string(TIMESTAMP_LEN - timestamp.length(), '0') + timestamp;
+    std::string rtt_s = std::to_string(LLONG_MAX - std::stoll(timestamp));
+    return std::string(TIMESTAMP_LEN - rtt_s.length(), '0') + rtt_s;
   }
 
   static std::string EncodeAddKey(const TSAddSpec &tspair) {
@@ -66,14 +67,15 @@ class TSCombinKey {
 
   static TSFieldValue Decode(const TSRangSpec &ts_rang_pair,
                              const std::string &combin_key) {
+    long long rtt =
+        std::stoll(combin_key.substr(combin_key.length() - TIMESTAMP_LEN));
+
     return TSFieldValue{
         combin_key.substr(ts_rang_pair.primary_key.length(),
                           combin_key.length() -
                               ts_rang_pair.primary_key.length() -
                               TIMESTAMP_LEN),
-        combin_key.substr(combin_key.find_first_not_of(
-            '0', combin_key.length() - TIMESTAMP_LEN)),
-        ""};
+        std::to_string(LLONG_MAX - rtt), ""};
   }
 
   static std::string MakePrefixKey(const TSRangSpec &rang_pair) {
@@ -84,7 +86,7 @@ class TSCombinKey {
       if (std::stoll(rang_pair.to_timestamp) > 0) {
         prefix_key.append(MakeTSTimestamp(rang_pair.to_timestamp));
       } else {
-        prefix_key.append(std::string(TIMESTAMP_LEN, '9'));
+        // prefix_key.append(std::string(TIMESTAMP_LEN, '9'));
       }
     } else {
       prefix_key.append(MakeTSTimestamp(rang_pair.from_timestamp));
@@ -93,6 +95,12 @@ class TSCombinKey {
     return prefix_key;
   }
 
+  static std::string MakePrefixKeyMF(const TSRangSpec &rang_pair) {
+    std::string prefix_key;
+    prefix_key.append(rang_pair.primary_key);
+    prefix_key.append(rang_pair.field);
+    return prefix_key;
+  }
   const static int TIMESTAMP_LEN = 20;
 
  private:
