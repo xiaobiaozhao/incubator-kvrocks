@@ -31,8 +31,9 @@
 #include <algorithm>
 #include <glog/logging.h>
 
-#include "redis_request.h"
 #include "redis_connection.h"
+#include "redis_request.h"
+#include "scripting.h"
 #include "server.h"
 #include "util.h"
 
@@ -56,6 +57,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
     }
     LOG(INFO) << "[worker] Listening on: " << bind << ":" << port;
   }
+  lua_ = Lua::CreateState();
 }
 
 Worker::~Worker() {
@@ -77,6 +79,7 @@ Worker::~Worker() {
     ev_token_bucket_cfg_free(rate_limit_group_cfg_);
   }
   event_base_free(base_);
+  Lua::DestroyState(lua_);
 }
 
 void Worker::TimerCB(int, int16_t events, void *ctx) {
