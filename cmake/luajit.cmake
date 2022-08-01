@@ -20,8 +20,8 @@ include_guard()
 include(cmake/utils.cmake)
 
 FetchContent_DeclareGitHubWithMirror(luajit
-  KvrocksLabs/LuaJIT 803487f8b01c672495a2fcd29dcbed09e4fd6319
-  MD5=cd08841342cd933fb7e3d6d4253fbeec
+  KvrocksLabs/LuaJIT b80ea0e44bd259646d988324619612f645e4b637
+  MD5=f9566c424fb57b226066e3a39a10ec8d
 )
 
 FetchContent_GetProperties(luajit)
@@ -33,14 +33,12 @@ if(NOT lua_POPULATED)
     set(LUA_CFLAGS "${LUA_CFLAGS} -isysroot ${CMAKE_OSX_SYSROOT}")
   endif()
 
-  set(MACOSX_TARGET "")
   if (CMAKE_HOST_APPLE)
-    set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=11.0")
+    set(MACOSX_TARGET "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
   endif()
 
   add_custom_target(make_luajit COMMAND make libluajit.a
-    "CFLAGS=${LUA_CFLAGS}"
-    ${MACOSX_TARGET}
+    "CFLAGS=${LUA_CFLAGS}" ${MACOSX_TARGET}
     WORKING_DIRECTORY ${luajit_SOURCE_DIR}/src
     BYPRODUCTS ${luajit_SOURCE_DIR}/src/libluajit.a
   )
