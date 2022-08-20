@@ -57,7 +57,7 @@ Worker::Worker(Server *svr, Config *config, bool repl) : svr_(svr) {
     }
     LOG(INFO) << "[worker] Listening on: " << bind << ":" << port;
   }
-  lua_ = Lua::CreateState();
+  lua_ = Lua::CreateState(true);
 }
 
 Worker::~Worker() {
