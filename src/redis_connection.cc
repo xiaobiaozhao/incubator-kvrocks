@@ -365,6 +365,7 @@ void Connection::ExecuteCommands(std::deque<CommandTokens> *to_process_cmds) {
       // thread-safe
       // if executing read only lua script commands, only set current
       // connection.
+      exclusivity = svr_->WorkExclusivityGuard();
       svr_->SetCurrentConnection(this);
     }
 
