@@ -112,7 +112,7 @@ start_server {tags {"introspection"}} {
 
         assert_equal {2} [r client kill type pubsub]
         # Now the pubsub client should no longer be listed
-        # but normal client should not be dropped 
+        # but normal client should not be dropped
         wait_for_condition 50 100 {
             [string match {*pubsub*} [r client list]] == 0 &&
             [string match {*normal*} [r client list]] == 1
@@ -128,7 +128,7 @@ start_server {tags {"introspection"}} {
         } else {
             fail "Slaves can't sync with master"
         }
-            
+
         test {Kill slave client} {
             set partial_ok [s -1 sync_partial_ok]
             # Kill slave connection
@@ -169,7 +169,7 @@ start_server {tags {"introspection"}} {
         set rd [redis_deferring_client]
         $rd DEBUG sleep 2.2
         $rd flush
-        after 100
+        after 10
 
         set start_time [clock seconds]
         r set a b
