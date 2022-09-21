@@ -112,8 +112,10 @@ class SlotMigrate : public Redis::Database {
   bool CheckResponseOnce(int sock_fd);
   bool CheckResponseWithCounts(int sock_fd, int total);
 
-  bool GetSlotKeyMetadata(const rocksdb::Slice &prefix_key, std::string *bytes);
-  Status MigrateOneKey(rocksdb::Slice key, std::string *restore_cmds);
+  // bool GetSlotKeyMetadata(const rocksdb::Slice &prefix_key, std::string
+  // *bytes);
+  Status MigrateOneKey(rocksdb::Slice key, const std::string &val,
+                       std::string *restore_cmds);
   bool MigrateSimpleKey(const rocksdb::Slice &key, const Metadata &metadata,
                         const std::string &bytes, std::string *restore_cmds);
   bool MigrateComplexKey(const rocksdb::Slice &key, const Metadata &metadata, std::string *restore_cmds);
