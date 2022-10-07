@@ -207,11 +207,7 @@ Config::Config() {
         false, new IntField(&RocksDB.max_bytes_for_level_multiplier, 10, 1, 100)},
       {"rocksdb.level_compaction_dynamic_level_bytes",
         false, new YesNoField(&RocksDB.level_compaction_dynamic_level_bytes, false)},
-      {"rocksdb.enable_db_paths", true, new YesNoField(&RocksDB.enable_db_paths, false)},
-      {"rocksdb.db_paths0", true, new StringField(&RocksDB.db_paths0, "")},
-      {"rocksdb.db_paths0_size_gb", true, new IntField(&RocksDB.db_paths0_size_gb, 0, 0, INT_MAX)},
-      {"rocksdb.db_paths1", true, new StringField(&RocksDB.db_paths1, "")},
-      {"rocksdb.db_paths1_size_gb", true, new IntField(&RocksDB.db_paths1_size_gb, 0, 0, INT_MAX)},
+      {"rocksdb.db_paths", true, new StringField(&RocksDB.db_paths, "")},
 
       /* rocksdb write options */
       {"rocksdb.write_options.sync", true, new YesNoField(&RocksDB.write_options.sync, false)},
@@ -295,6 +291,20 @@ void Config::initFieldValidator() {
           (*commands)[new_command_name] = cmd_iter->second;
         }
         commands->erase(cmd_iter);
+        return Status::OK();
+      }},
+      {"rocksdb.db_paths", [this](const std::string& k, const std::string& v)->Status {
+        if (v.empty()) {
+          return Status::OK();
+        }
+        std::vector<std::string> paths = Util::Split(v, ";");
+        for (auto & path_size : paths) {
+          std::vector<std::string> ps = Util::Split(path_size, " \t");
+          auto parse_result = ParseInt<uint32_t>(ps[1]);
+          if (!parse_result) {
+            return Status(Status::NotOK, "db_paths size muster be uint32_t");
+          }
+        }
         return Status::OK();
       }},
   };
