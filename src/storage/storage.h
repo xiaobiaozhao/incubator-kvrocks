@@ -98,7 +98,7 @@ class Storage {
   bool IsClosing() { return db_closing_; }
   const std::string GetName() { return config_->db_name; }
   rocksdb::ColumnFamilyHandle *GetCFHandle(const std::string &name);
-  std::vector<rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
+  std::map<std::string, rocksdb::ColumnFamilyHandle *> *GetCFHandles() { return &cf_handles_; }
   LockManager *GetLockManager() { return &lock_mgr_; }
   void PurgeOldBackups(uint32_t num_backups_to_keep, uint32_t backup_max_keep_hours);
   uint64_t GetTotalSize(const std::string &ns = kDefaultNamespace);
@@ -169,7 +169,7 @@ class Storage {
   ReplDataManager::CheckpointInfo checkpoint_info_;
   std::mutex checkpoint_mu_;
   Config *config_ = nullptr;
-  std::vector<rocksdb::ColumnFamilyHandle *> cf_handles_;
+  std::map<std::string, rocksdb::ColumnFamilyHandle *> cf_handles_;
   LockManager lock_mgr_;
   bool reach_db_size_limit_ = false;
   std::atomic<uint64_t> flush_count_{0};

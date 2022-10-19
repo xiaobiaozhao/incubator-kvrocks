@@ -44,6 +44,7 @@
 #include "fd_util.h"
 #include "redis_db.h"
 #include "redis_metadata.h"
+#include "rocksdb/db.h"
 #include "rocksdb_crc32c.h"
 #include "server/server.h"
 #include "table_properties_collector.h"
@@ -89,7 +90,7 @@ void Storage::CloseDB() {
   db_closing_ = true;
   db_->SyncWAL();
   rocksdb::CancelAllBackgroundWork(db_, true);
-  for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle);
+  for (auto handle : cf_handles_) db_->DestroyColumnFamilyHandle(handle.second);
   delete db_;
   db_ = nullptr;
 }
@@ -186,7 +187,7 @@ rocksdb::Options Storage::InitOptions() {
 
 Status Storage::SetColumnFamilyOption(const std::string &key, const std::string &value) {
   for (auto &cf_handle : cf_handles_) {
-    auto s = db_->SetOptions(cf_handle, {{key, value}});
+    auto s = db_->SetOptions(cf_handle.second, {{key, value}});
     if (!s.ok()) return Status(Status::NotOK, s.ToString());
   }
   return Status::OK();
@@ -311,17 +312,21 @@ Status Storage::Open(bool read_only) {
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
   auto start = std::chrono::high_resolution_clock::now();
   if (read_only) {
-    s = rocksdb::DB::OpenForReadOnly(options, config_->db_dir, column_families, &cf_handles_, &db_);
+    s = rocksdb::DB::OpenForReadOnly(options, config_->db_dir, column_families, &cf_handles, &db_);
   } else {
-    s = rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles_, &db_);
+    s = rocksdb::DB::Open(options, config_->db_dir, column_families, &cf_handles, &db_);
   }
   auto end = std::chrono::high_resolution_clock::now();
   int64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
   if (!s.ok()) {
     LOG(INFO) << "[storage] Failed to load the data from disk: " << duration << " ms";
     return Status(Status::DBOpenErr, s.ToString());
+  }
+  for (std::size_t i = 0; i < column_families.size(); i++) {
+    cf_handles_[column_families[i].name] = cf_handles[i];
   }
   LOG(INFO) << "[storage] Success to load the data from disk: " << duration << " ms";
   return Status::OK();
@@ -553,25 +558,17 @@ Status Storage::ReplicaApplyWriteBatch(std::string &&raw_batch) {
 }
 
 rocksdb::ColumnFamilyHandle *Storage::GetCFHandle(const std::string &name) {
-  if (name == kMetadataColumnFamilyName) {
-    return cf_handles_[1];
-  } else if (name == kZSetScoreColumnFamilyName) {
-    return cf_handles_[2];
-  } else if (name == kPubSubColumnFamilyName) {
-    return cf_handles_[3];
-  } else if (name == kPropagateColumnFamilyName) {
-    return cf_handles_[4];
-  } else if (name == kStreamColumnFamilyName) {
-    return cf_handles_[5];
+  if (cf_handles_.find(name) != cf_handles_.end()) {
+    return cf_handles_[name];
   }
-  return cf_handles_[0];
+  return cf_handles_[rocksdb::kDefaultColumnFamilyName];
 }
 
 rocksdb::Status Storage::Compact(const Slice *begin, const Slice *end) {
   rocksdb::CompactRangeOptions compact_opts;
   compact_opts.change_level = true;
   for (const auto &cf_handle : cf_handles_) {
-    rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle, begin, end);
+    rocksdb::Status s = db_->CompactRange(compact_opts, cf_handle.second, begin, end);
     if (!s.ok()) return s;
   }
   return rocksdb::Status::OK();
@@ -589,14 +586,15 @@ uint64_t Storage::GetTotalSize(const std::string &ns) {
   uint8_t include_both =
       rocksdb::DB::SizeApproximationFlags::INCLUDE_FILES | rocksdb::DB::SizeApproximationFlags::INCLUDE_MEMTABLES;
   for (auto cf_handle : cf_handles_) {
-    if (cf_handle == GetCFHandle(kPubSubColumnFamilyName) || cf_handle == GetCFHandle(kPropagateColumnFamilyName)) {
+    if (cf_handle.second == GetCFHandle(kPubSubColumnFamilyName) ||
+        cf_handle.second == GetCFHandle(kPropagateColumnFamilyName)) {
       continue;
     }
-    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle);
+    auto s = db.FindKeyRangeWithPrefix(prefix, std::string(), &begin_key, &end_key, cf_handle.second);
     if (!s.ok()) continue;
 
     rocksdb::Range r(begin_key, end_key);
-    db_->GetApproximateSizes(cf_handle, &r, 1, &size, include_both);
+    db_->GetApproximateSizes(cf_handle.second, &r, 1, &size, include_both);
     total_size += size;
   }
   return total_size;

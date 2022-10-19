@@ -25,6 +25,7 @@
 #include <string>
 #include <utility>
 
+#include "storage/storage.h"
 #include "types/redis_bitmap.h"
 
 namespace Engine {
@@ -58,7 +59,7 @@ Status SubKeyFilter::GetMetadata(const InternalKey &ikey, Metadata *metadata) co
 
   if (cached_key_.empty() || metadata_key != cached_key_) {
     std::string bytes;
-    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), (*cf_handles)[1], metadata_key, &bytes);
+    rocksdb::Status s = db->Get(rocksdb::ReadOptions(), (*cf_handles)[kMetadataColumnFamilyName], metadata_key, &bytes);
     cached_key_ = std::move(metadata_key);
     if (s.ok()) {
       cached_metadata_ = std::move(bytes);
