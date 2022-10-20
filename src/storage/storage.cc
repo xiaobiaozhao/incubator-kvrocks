@@ -312,6 +312,18 @@ Status Storage::Open(bool read_only) {
   std::vector<std::string> old_column_families;
   auto s = rocksdb::DB::ListColumnFamilies(options, config_->db_dir, &old_column_families);
   if (!s.ok()) return Status(Status::NotOK, s.ToString());
+  for (auto &cf_name : old_column_families) {
+    bool need_add = true;
+    for (rocksdb::ColumnFamilyDescriptor &cfd : column_families) {
+      if (cfd.name == cf_name) {
+        need_add = false;
+        break;
+      }
+    }
+    if (need_add) {
+      column_families.emplace_back(rocksdb::ColumnFamilyDescriptor(cf_name, options));
+    }
+  }
   std::vector<rocksdb::ColumnFamilyHandle *> cf_handles;
   auto start = std::chrono::high_resolution_clock::now();
   if (read_only) {
