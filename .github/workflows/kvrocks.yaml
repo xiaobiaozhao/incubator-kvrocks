@@ -35,12 +35,12 @@ concurrency:
 jobs:
   check-and-lint:
     name: Lint and check code
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
-          go-version-file: 'tests/gocase/go.mod'
+          go-version-file: "tests/gocase/go.mod"
       - name: Prepare Dependencies
         run: |
           sudo apt update
@@ -93,51 +93,51 @@ jobs:
             compiler: auto
             without_luajit: -DUSE_LUAJIT=OFF
           - name: Ubuntu GCC
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
           - name: Ubuntu Clang
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: clang
           - name: Ubuntu GCC ASan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_ASAN=ON
             compiler: gcc
           - name: Ubuntu Clang ASan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_sanitizer: -DENABLE_ASAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
           - name: Ubuntu GCC TSan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             with_sanitizer: -DENABLE_TSAN=ON
             compiler: gcc
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu Clang TSan
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_sanitizer: -DENABLE_TSAN=ON
             without_jemalloc: -DDISABLE_JEMALLOC=ON
             compiler: clang
             ignore_when_tsan: -tags="ignore_when_tsan"
           - name: Ubuntu GCC Ninja
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             with_ninja: --ninja
             compiler: gcc
           - name: Ubuntu GCC with OpenSSL
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: gcc
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu Clang with OpenSSL
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             compiler: clang
             with_openssl: -DENABLE_OPENSSL=ON
           - name: Ubuntu GCC without luaJIT
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: gcc
           - name: Ubuntu Clang without luaJIT
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             without_luajit: -DUSE_LUAJIT=OFF
             compiler: clang
 
@@ -177,7 +177,7 @@ jobs:
           python-version: 3.x
       - uses: actions/setup-go@v3
         with:
-          go-version-file: 'tests/gocase/go.mod'
+          go-version-file: "tests/gocase/go.mod"
 
       - name: Build Kvrocks
         run: |
@@ -246,7 +246,7 @@ jobs:
   check-docker:
     name: Check Docker image
     needs: [check-and-lint]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: Get core numbers

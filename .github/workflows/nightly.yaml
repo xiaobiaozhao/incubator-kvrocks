@@ -21,14 +21,13 @@ on:
   push:
     branches: [unstable]
   pull_request:
-    paths: ['.github/workflows/nightly.yaml']
+    paths: [".github/workflows/nightly.yaml"]
 
 jobs:
   publish-nightly-docker-image:
     name: Publish nightly Docker image
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
-
       - uses: actions/checkout@v3
       - name: Login Docker Hub
         if: (github.event_name != 'pull_request')
@@ -46,7 +45,7 @@ jobs:
 
       - name: Available platforms
         run: echo ${{ steps.buildx.outputs.platforms }}
-      
+
       - name: Get core numbers
         run: echo "NPROC=$(nproc)" >> $GITHUB_ENV
 
