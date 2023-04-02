@@ -26,6 +26,7 @@
 #include <shared_mutex>
 
 #include "commands/commander.h"
+#include "event2/bufferevent.h"
 #include "fmt/format.h"
 #ifdef ENABLE_OPENSSL
 #include <event2/bufferevent_ssl.h>
@@ -86,10 +87,12 @@ void Connection::OnRead(struct bufferevent *bev, void *ctx) {
     return;
   }
 
+  bufferevent_disable(bev, EV_READ);
   conn->ExecuteCommands(conn->req_.GetCommands());
   if (conn->IsFlagEnabled(kCloseAsync)) {
     conn->Close();
   }
+  bufferevent_enable(bev, EV_READ);
 }
 
 void Connection::OnWrite(struct bufferevent *bev, void *ctx) {
