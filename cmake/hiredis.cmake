@@ -24,14 +24,17 @@ FetchContent_DeclareGitHubWithMirror(hiredis
   MD5=fee8ff6f43c155fcb0efd6b13835564b
 )
 
+FetchContent_GetProperties(hiredis)
 if(NOT hiredis_POPULATED)
   FetchContent_Populate(hiredis)
-  add_subdirectory(${hiredis_SOURCE_DIR} ${hiredis_BINARY_DIR})
-  message(WARNING ${hiredis_SOURCE_DIR})
+
+  add_custom_target(make_hiredis COMMAND make static
+    WORKING_DIRECTORY ${hiredis_SOURCE_DIR}
+    BYPRODUCTS ${hiredis_SOURCE_DIR}/libhiredis.a
+  )
 endif()
 
-FetchContent_MakeAvailableWithArgs(hiredis)
-
-add_library(hiredis_with_headers INTERFACE)
-target_include_directories(hiredis_with_headers INTERFACE ${hiredis_SOURCE_DIR})
-target_link_libraries(hiredis_with_headers INTERFACE hiredis::hiredis_static)
+add_library(hiredis INTERFACE)
+target_include_directories(hiredis INTERFACE ${hiredis_SOURCE_DIR})
+target_link_libraries(hiredis INTERFACE ${hiredis_SOURCE_DIR}/libhiredis.a)
+add_dependencies(hiredis make_hiredis)
